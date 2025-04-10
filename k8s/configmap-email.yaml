@@ -1,0 +1,207 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: elastalert-config
+  namespace: kube-logging
+data:
+  k8s_app_error.yaml: |
+    es_host: elasticsearch  # Elasticsearch 连接地址
+    es_port: 9200           # Elasticsearch 端口
+    name: k8s_error_log_k8s     # 规则名称，用于标识规则
+    type: frequency         # 规则类型，frequency 表示基于日志的频率进行告警,有多种类型,不同的类型配置项有不同
+    query_key:              # 不进行重复提醒的字段
+      - "message"           # 使用 message 字段进行判断
+    #aggregation:            # 聚合 5 分钟内的结果，合并在一起发送
+      #minutes: 5
+    realert:                # 同一规则的两次警报之间的最短时间
+      minutes: 1            # 最短时间间隔，控制同一规则的重复告警间隔
+    exponential_realert:    # 指数型扩展 realert 时间，例如第一次是 5 分钟，第二次是 10 分钟，以此类推
+      hours: 1    
+    index: k8s-app-log-simulator-*            # 匹配索引，支持正则
+    num_events: 1           # 与规则匹配的日志出现次数
+    timeframe:              # 在这个时间段内，如果出现指定次数的日志，将触发告警
+      minutes: 1
+    aggregation_key: name     # 根据报警的名称，将相同的报警按照name来聚合
+    filter:
+      - query:
+          bool:
+            must:
+              - bool:
+                  should:  # 匹配任意一个标签（OR 关系）
+                    - term: { kubernetes_labels_k8s-app.keyword: "nginx" }
+                    - term: { kubernetes_labels_k8s-app.keyword: "log-simulator" }
+                    - term: { kubernetes_labels_k8s-app.keyword: "your-app-1" }  # 替换为您的其他标签
+                    - term: { kubernetes_labels_k8s-app.keyword: "your-app-2" }  # 替换为您的其他标签
+                  minimum_should_match: 1  # 至少匹配一个标签
+              - query_string:  # 保留原有的错误日志匹配
+                  query: "message:(*error* OR *Exception* OR *stacktrace*)"
+                  analyze_wildcard: true
+            must_not:
+              - query_string:
+                  query: 'message: "INFO"'  # 排除包含 INFO 的日志
+                  #query: 'uri:\/monitor\/getExceptionStatusList'   # 这里排除了这个接口，使用了\进行转义
+                  analyze_wildcard: true
+    alert:
+    - "email"   # 使用邮件模块
+    - "elastalert.alerters.feishu.FeishuAlert"  # 使用飞书告警模块
+
+    # 这个时间段内的匹配将不告警，适用于某些时间段请求低谷避免误报警
+    #feishualert_skip:
+    #  start: "01:00:00"
+    #  end: "08:00:00"
+
+    email:
+    - "2099637909@qq.com"
+    smtp_host: smtp.qq.com
+    smtp_port: 25
+    smtp_auth_file: /opt/elastalert/smtp_auth.yaml      
+    from_addr: 2099637909@qq.com
+
+    email_format: html
+    alert_text_type: alert_text_only
+    # 标题
+    alert_subject: "生产环境日志告警通知"
+    # 丰富的邮件模板，包含了更多详细的字段
+    alert_text: "<br><a href='http://k8s-kibana.localhost.com/app/kibana' target='_blank' style='padding: 8px 16px;background-color: #46bc99;text-decoration:none;color:white;border-radius: 5px;'>立刻前往Kibana查看</a><br>
+    <table>
+    <tr><td style='padding:5px;text-align: right;font-weight: bold;border-radius: 5px;background-color: #eef;'>告警时间</td>
+    <td style='padding:5px;border-radius: 5px;background-color: #eef;'>{@timestamp}</td></tr>
+    <tr><td style='padding:5px;text-align: right;font-weight: bold;border-radius: 5px;background-color: #eef;'>服务名称</td>
+    <td style='padding:5px;border-radius: 5px;background-color: #eef;'>{module}</td></tr>
+    <tr><td style='padding:5px;text-align: right;font-weight: bold;border-radius: 5px;background-color: #eef;'>日志级别</td>
+    <td style='padding:5px;border-radius: 5px;background-color: #eef;'>{level}</td></tr>
+    <tr><td style='padding:5px;text-align: right;font-weight: bold;border-radius: 5px;background-color: #eef;'>错误日志</td>
+    <td style='padding:10px 5px;border-radius: 5px;background-color: #F8F9FA;'>{msg}</td></tr>
+    <tr><td style='padding:5px;text-align: right;font-weight: bold;border-radius: 5px;background-color: #eef;'>错误数量</td>
+    <td style='padding:5px;border-radius: 5px;background-color: #eef;'>{num_hits}</td></tr>
+    <tr><td style='padding:5px;text-align: right;font-weight: bold;border-radius: 5px;background-color: #eef;'>匹配日志数量</td>
+    <td style='padding:5px;border-radius: 5px;background-color: #eef;'>{num_matches}</td></tr>
+    <tr><td style='padding:5px;text-align: right;font-weight: bold;border-radius: 5px;background-color: #eef;'>主机名</td>
+    <td style='padding:5px;border-radius: 5px;background-color: #eef;'>{host}</td></tr>
+    <tr><td style='padding:5px;text-align: right;font-weight: bold;border-radius: 5px;background-color: #eef;'>Pod 名称</td>
+    <td style='padding:5px;border-radius: 5px;background-color: #eef;'>{kubernetes.pod_name}</td></tr>
+    <tr><td style='padding:5px;text-align: right;font-weight: bold;border-radius: 5px;background-color: #eef;'>容器名称</td>
+    <td style='padding:5px;border-radius: 5px;background-color: #eef;'>{kubernetes.container_name}</td></tr>
+    <tr><td style='padding:5px;text-align: right;font-weight: bold;border-radius: 5px;background-color: #eef;'>容器ID</td>
+    <td style='padding:5px;border-radius: 5px;background-color: #eef;'>{kubernetes.container_id}</td></tr>
+    <tr><td style='padding:5px;text-align: right;font-weight: bold;border-radius: 5px;background-color: #eef;'>日志流</td>
+    <td style='padding:5px;border-radius: 5px;background-color: #eef;'>{stream}</td></tr>
+    <tr><td style='padding:5px;text-align: right;font-weight: bold;border-radius: 5px;background-color: #eef;'>索引名称</td>
+    <td style='padding:5px;border-radius: 5px;background-color: #eef;'>{_index}</td></tr>
+    </table>"
+
+
+
+    feishu_webhook_url: "https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxxxx-e043-4a64-975d-xxxxxxxx"
+    feishu_alert_type: "card"            # 默认就是 card
+    alert_text_args:
+    - "@timestamp"                       # 告警触发时间
+    - "message"                          # 错误日志
+    - "num_hits"                         # 错误数量
+    - "num_matches"                      # 规则命中数
+    - "kubernetes_host"                  # 主机名
+    - "kubernetes_namespace_name"        # Kubernetes 命名空间
+    - "kubernetes_pod_name"              # Kubernetes Pod 名称
+    - "kubernetes_container_image"       # 容器镜像
+    - "kubernetes_container_name"        # 容器名称
+    - "stream"                           # 日志流
+    - "_index"                           # 索引名称
+
+    kibana_base_url: "http://k8s-kibana.linuxtian.com/app/kibana"
+
+    feishu_card_template:
+      msg_type: interactive
+      card:
+        header:
+          title:
+            tag: plain_text
+            content: "🚨 k8s业务error异常告警"
+          template: red
+        elements:
+          - tag: div
+            text:
+              tag: lark_md
+              content: "**🕒 触发时间：**{{@timestamp_local}}" # 本地时间 UTC+8
+          - tag: div
+            text:
+              tag: lark_md
+              content: "**📦 命名空间：**{{kubernetes_namespace_name}}"
+          - tag: div
+            text:
+              tag: lark_md
+              content: "**🐳 Pod 名称：**{{kubernetes_pod_name}}"
+          - tag: div
+            text:
+              tag: lark_md
+              content: "**🧪 容器镜像：**{{kubernetes_container_image}}"
+          - tag: div
+            text:
+              tag: lark_md
+              content: "**📛 容器名称：**{{kubernetes_container_name}}"
+          - tag: div
+            text:
+              tag: lark_md
+              content: "**📈 日志流：**{{stream}}"
+          - tag: div
+            text:
+              tag: lark_md
+              content: "**🗂 索引名称：**{{_index}}"
+          - tag: div
+            text:
+              tag: lark_md
+              content: "**📊 错误数量：**{{num_hits}}"
+          - tag: div
+            text:
+              tag: lark_md
+              content: "**🎯 规则命中数：**{{num_matches}}"
+          - tag: div
+            text:
+              tag: lark_md
+              content: "**📝 错误日志：**{{message}}"
+          - tag: hr
+          - tag: action
+            actions:
+              - tag: button
+                text:
+                  tag: plain_text
+                  content: "🔍 查看 Kibana 日志"
+                type: default
+                url: "{{ kibana_url }}"
+
+  config.json: |
+    {
+      "appName": "elastalert-server",
+      "port": 3030,                
+      "wsport": 3333,
+      "elastalertPath": "/opt/elastalert",
+      "verbose": false,
+      "es_debug": false,
+      "debug": false,
+      "rulesPath": {
+        "relative": true,
+        "path": "/rules"
+      },
+      "templatesPath": {
+        "relative": true,
+        "path": "/rule_templates"
+      },
+      "es_host": "elasticsearch",
+      "es_port": 9200,
+      "writeback_index": "elastalert_status"
+    }
+  # ElastAlert主配置文件，定义了规则目录、执行频率等全局设置
+  elastalert.yaml: |
+    rules_folder: rules               # 规则目录
+    run_every:
+      seconds: 60                     # 每 60 秒检查一次规则
+    buffer_time:
+      minutes: 5                      # 缓冲时间为 5 分钟
+    max_running_instances: 5          # 允许最多并发 5 个规则执行
+    es_host: elasticsearch            # Elasticsearch 主机
+    es_port: 9200                     # Elasticsearch 端口
+    use_ssl: False                    # 是否使用 SSL 加密
+    verify_certs: False               # 是否验证 SSL 证书
+    writeback_index: elastalert_status_k8s  # 用于写回告警状态的索引
+    writeback_alias: elastalert_alerts_k8s  # 用于写回告警的别名
+    alert_time_limit:
+      days: 2                         # 记录告警的最大时间范围，超过2天的告警会被清除

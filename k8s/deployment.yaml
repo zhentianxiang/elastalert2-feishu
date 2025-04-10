@@ -1,0 +1,121 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: elastalert
+  name: elastalert
+  namespace: kube-logging
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: elastalert
+  template:
+    metadata:
+      labels:
+        app: elastalert
+      name: elastalert
+    spec:
+      containers:
+      - name: elastalert-log-simulator
+        image: registry.cn-hangzhou.aliyuncs.com/tianxiang_app/elastalert2-feishu:v6
+        imagePullPolicy: Always
+        env:
+        - name: TZ
+          value: Asia/Shanghai
+        - name: ELASTALERT_LOG_LEVEL
+          value: INFO
+        ports:
+          - containerPort: 3030
+            name: tcp-3030
+            protocol: TCP
+          - containerPort: 3333
+            name: tcp-3333
+            protocol: TCP
+        resources:
+          limits:
+            cpu: '1'
+            memory: "1024Mi"
+          requests:
+            cpu: '0.5'
+            memory: "512Mi"
+        volumeMounts:
+          - name: elastalert-config-log-simulator
+            mountPath: /opt/elastalert/config.yaml
+            subPath: elastalert.yaml
+          #- name: smtp-auth-volume
+          #  mountPath: /opt/elastalert/smtp_auth.yaml
+          #  subPath: smtp_auth.yaml
+          - name: elastalert-config-log-simulator
+            mountPath: /opt/elastalert-server/config/config.json
+            subPath: config.json
+          - name: elastalert-config-log-simulator
+            mountPath: /opt/elastalert/rules/k8s_app_error.yaml
+            subPath: k8s_app_error.yaml
+      - name: elastalert-helloworld
+        image: registry.cn-hangzhou.aliyuncs.com/tianxiang_app/elastalert2-feishu:v6
+        imagePullPolicy: Always
+        env:
+        - name: TZ
+          value: Asia/Shanghai
+        - name: ELASTALERT_LOG_LEVEL
+          value: INFO
+        ports:
+          - containerPort: 3030
+            name: tcp-3030
+            protocol: TCP
+          - containerPort: 3333
+            name: tcp-3333
+            protocol: TCP
+        resources:
+          limits:
+            cpu: '1'
+            memory: "1024Mi"
+          requests:
+            cpu: '0.5'
+            memory: "512Mi"
+        volumeMounts:
+          - name: elastalert-config-helloworld
+            mountPath: /opt/elastalert/config.yaml
+            subPath: elastalert.yaml
+          #- name: smtp-auth-volume
+          #  mountPath: /opt/elastalert/smtp_auth.yaml
+          #  subPath: smtp_auth.yaml
+          - name: elastalert-config-helloworld
+            mountPath: /opt/elastalert-server/config/config.json
+            subPath: config.json
+          - name: elastalert-config-helloworld
+            mountPath: /opt/elastalert/rules/k8s_app_error.yaml
+            subPath: k8s_app_error.yaml
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      volumes:
+      - name: elastalert-config-log-simulator
+        configMap:
+          defaultMode: 420
+          name: elastalert-config-log-simulator
+      - name: elastalert-config-helloworld
+        configMap:
+          defaultMode: 420
+          name: elastalert-config-helloworld
+      #- name: smtp-auth-volume
+      #  secret:
+      #    secretName: smtp-auth
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: elastalert
+  namespace: kube-logging
+spec:
+  ports:
+  - name: serverport
+    port: 3030
+    protocol: TCP
+    targetPort: 3030
+  - name: transport
+    port: 3333
+    protocol: TCP
+    targetPort: 3333
+  selector:
+    app: elastalert
