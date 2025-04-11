@@ -10,6 +10,8 @@ import re
 import requests
 import os
 import logging
+import urllib.parse
+from urllib.parse import quote
 from datetime import datetime, timedelta
 from elastalert.alerts import Alerter, DateTimeEncoder
 from elastalert.util import elastalert_logger, EAException
@@ -265,12 +267,27 @@ class FeishuAlert(Alerter):
             if raw_message:
                 first_line = raw_message.split('\n')[0].strip()
                 if first_line:
-                    escaped_msg = first_line.replace('"', '\\"')[:100]
+                    max_len = 100
+                    trimmed_msg = first_line[:max_len]
+            
+                    # 自动补齐未截断的单词
+                    if trimmed_msg and trimmed_msg[-1].isalnum():
+                        extra = ''
+                        for ch in first_line[max_len:]:
+                            if ch.isalnum():
+                                extra += ch
+                            else:
+                                break
+                        trimmed_msg += extra
+           
+                    escaped_msg = trimmed_msg.replace('"', '\\"')
                     kuery_parts.append(f'message:"{escaped_msg}*"')
-                    elastalert_logger.debug(f"添加消息查询条件: {escaped_msg}...")
+                    elastalert_logger.debug(f"添加消息查询条件: {escaped_msg}*")
     
             kuery_query = " and ".join(kuery_parts)
-            elastalert_logger.debug(f"生成的KQL查询: {kuery_query}")
+            # 对整个KQL查询进行URL编码
+            kuery_query_encoded = urllib.parse.quote(kuery_query, safe='')
+            elastalert_logger.debug(f"生成kibana的KQL查询: {kuery_query_encoded}")
     
             # 处理时间范围（使用日志时间±5分钟）
             if log_timestamp:
@@ -309,7 +326,7 @@ class FeishuAlert(Alerter):
                 f"{base_url}#/discover?"
                 f"_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:{time_range})&"
                 f"_a=(columns:!(_source),index:'{index_pattern_id}',interval:auto,"
-                f"query:(language:kuery,query:'{kuery_query}'),sort:!('@timestamp',desc))"
+                f"query:(language:kuery,query:'{kuery_query_encoded}'),sort:!('@timestamp',desc))"
             )
             
             elastalert_logger.info(f"生成的 Kibana URL: {url[:200]}...")  # 只记录前200个字符
