@@ -18,7 +18,7 @@ spec:
     spec:
       containers:
       - name: elastalert-log-simulator
-        image: registry.cn-hangzhou.aliyuncs.com/tianxiang_app/elastalert2-feishu:v6
+        image: registry.cn-hangzhou.aliyuncs.com/tianxiang_app/elastalert2-feishu:v7
         imagePullPolicy: Always
         env:
         - name: TZ
@@ -53,7 +53,7 @@ spec:
             mountPath: /opt/elastalert/rules/k8s_app_error.yaml
             subPath: k8s_app_error.yaml
       - name: elastalert-helloworld
-        image: registry.cn-hangzhou.aliyuncs.com/tianxiang_app/elastalert2-feishu:v6
+        image: registry.cn-hangzhou.aliyuncs.com/tianxiang_app/elastalert2-feishu:v7
         imagePullPolicy: Always
         env:
         - name: TZ

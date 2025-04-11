@@ -5,23 +5,42 @@ metadata:
   namespace: kube-logging
 data:
   k8s_app_error.yaml: |
-    es_host: elasticsearch  # Elasticsearch 连接地址
-    es_port: 9200           # Elasticsearch 端口
-    name: k8s_error_log_log-simulator     # 规则名称，用于标识规则
-    type: frequency         # 规则类型，frequency 表示基于日志的频率进行告警,有多种类型,不同的类型配置项有不同
-    query_key:              # 不进行重复提醒的字段
-      - "message"           # 使用 message 字段进行判断
-    #aggregation:            # 聚合 5 分钟内的结果，合并在一起发送
-      #minutes: 5
-    realert:                # 同一规则的两次警报之间的最短时间
-      minutes: 1            # 最短时间间隔，控制同一规则的重复告警间隔
-    exponential_realert:    # 指数型扩展 realert 时间，例如第一次是 5 分钟，第二次是 10 分钟，以此类推
-      hours: 1    
-    index: k8s-app-log-simulator-*            # 匹配索引，支持正则
-    num_events: 1           # 与规则匹配的日志出现次数
-    timeframe:              # 在这个时间段内，如果出现指定次数的日志，将触发告警
-      minutes: 1
-    aggregation_key: name     # 根据报警的名称，将相同的报警按照name来聚合
+    # ========== 基础配置 ==========
+    es_host: elasticsearch       # Elasticsearch服务地址（Kubernetes服务名或IP）
+    es_port: 9200                # Elasticsearch服务端口
+
+    # ========== 规则核心配置 ==========
+    name: k8s_error_log-simulator  # 规则唯一标识名称（用于日志和告警区分）
+    type: frequency              # 规则类型：
+                                #   - frequency: 频率型（固定时间段内达到阈值触发）
+                                #   - any: 匹配到即触发
+                                #   - spike: 流量突增/突降
+                                #   - flatline: 流量低于阈值
+                                #   - change: 字段值变化时触发
+
+    # ========== 事件去重配置 ==========
+    query_key:                   # 定义去重字段（相同值的日志视为重复）
+      - "@timestamp"             # 时间戳字段（其意思表示为用时间去判断亦或者理解为不去重，因为时间没有重复的）
+      - "message"                # 日志内容字段（相同message视为重复事件）
+
+    realert:                     # 相同告警的最小间隔时间（防骚扰）
+      minutes: 0                 # 0表示每次匹配都告警（适合关键错误）
+                                # 若设为5，则5分钟内相同错误只告警一次
+
+    # ========== 告警触发条件 ==========
+    index: k8s-app-log-simulator-*  # 监控的索引模式（支持通配符和日期模式）
+    num_events: 1                # 触发阈值（1表示匹配到1条即告警）
+    timeframe:                   # 统计时间窗口（与num_events配合使用）
+      minutes: 1                 # 在1分钟内出现num_events次则触发
+
+    # ========== 高级配置（示例） ==========
+    # aggregation:               # 告警聚合配置（将多条日志合并为一个告警）
+    #   minutes: 5               # 5分钟内的匹配日志合并发送
+    #   summary_table_fields:    # 聚合告警中显示的字段
+    #     - "message"
+
+    # exponential_realert:        # 指数级告警间隔（用于逐渐降低频繁错误通知）
+    #   hours: 1                 # 每次重复告警间隔乘以2（1h→2h→4h...）
     filter:
       - query:
           bool:
@@ -33,13 +52,14 @@ data:
                     - term: { kubernetes_labels_k8s-app.keyword: "your-app-1" }  # 替换为您的其他标签
                     - term: { kubernetes_labels_k8s-app.keyword: "your-app-2" }  # 替换为您的其他标签
                   minimum_should_match: 1  # 至少匹配一个标签
-              - query_string:  # 保留原有的错误日志匹配
-                  query: "message:(*error* OR *Exception* OR *stacktrace*)"
+              - query_string:  # 必须是 ERROR 等级
+                  query: 'message: "*ERROR*" OR message: "*Exception*" OR message: "*stacktrace*"'
                   analyze_wildcard: true
             must_not:
               - query_string:
-                  query: 'message: "INFO"'  # 排除包含 INFO 的日志
-                  analyze_wildcard: true
+                  query: 'message: "*INFO*"'  # 排除包含 INFO 的日志
+                  #query: 'uri:\/monitor\/getExceptionStatusList'   # 这里排除了这个接口，使用了\进行转义
+                  #                  analyze_wildcard: true
 
     alert:
     - "elastalert.alerters.feishu.FeishuAlert" 
@@ -50,7 +70,7 @@ data:
     #  end: "08:00:00"
 
 
-    feishu_webhook_url: "https://open.feishu.cn/open-apis/bot/v2/hook/e62596c6-e043-4a64-975d-xxxxxxxxxxxx"
+    feishu_webhook_url: "https://open.feishu.cn/open-apis/bot/v2/hook/e62596c6-e043-4a64-975d-xxxxxxxxxx"
     feishu_alert_type: "card"            # 默认就是 card
     alert_text_args:
     - "@timestamp"                       # 告警触发时间
